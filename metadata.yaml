@@ -2,7 +2,7 @@ name: astrbot_plugin_webhook
 display_name: Webhook 推送
 desc: 在群里用 /webhook add 生成 token，后台即可通过 HTTP POST 把文本或图片推送到该群/会话。
 short_desc: 聊天创建 Webhook，后台推送消息
-version: v1.2.1
+version: v1.2.2
 author: xZhongjie
 repo: https://github.com/xZhongjie/astrbot_plugin_webhook
 astrbot_version: ">=4.10.4"
@@ -12,6 +12,7 @@ support_platforms:
   - discord
   - kook
   - webchat
+
 
 
 
