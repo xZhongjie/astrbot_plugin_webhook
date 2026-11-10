@@ -7,8 +7,8 @@
   "port": {
     "description": "监听端口",
     "type": "int",
-    "default": 6199,
-    "hint": "服务端「Koishi 地址」填 http://你的IP:这个端口"
+    "default": 16199,
+    "hint": "被占用时会自动往后找空闲端口，以日志实际端口为准"
   },
   "public_base_url": {
     "description": "对外展示地址",
