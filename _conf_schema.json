@@ -1,5 +1,9 @@
 {
-  "host": {"description": "监听地址", "type": "string", "default": "0.0.0.0"},
+  "host": {
+    "description": "监听地址",
+    "type": "string",
+    "default": "0.0.0.0"
+  },
   "port": {
     "description": "监听端口",
     "type": "int",
@@ -22,11 +26,53 @@
         "name": "Webhook",
         "display_item": "name",
         "items": {
-          "name": {"description": "名称", "type": "string", "default": ""},
-          "session": {"description": "绑定的会话", "type": "string", "default": ""},
-          "token": {"description": "服务端生成的令牌", "type": "string", "default": ""},
-          "enabled": {"description": "启用", "type": "bool", "default": true}
+          "name": {
+            "description": "名称",
+            "type": "string",
+            "default": ""
+          },
+          "session": {
+            "description": "绑定的会话",
+            "type": "string",
+            "default": ""
+          },
+          "token": {
+            "description": "服务端生成的令牌",
+            "type": "string",
+            "default": ""
+          },
+          "enabled": {
+            "description": "启用",
+            "type": "bool",
+            "default": true
+          }
         }
+      }
+    }
+  },
+  "events": {
+    "description": "启用的 Webhook 事件",
+    "type": "object",
+    "items": {
+      "approved_post": {
+        "description": "新帖已审核 /webhook/approved-post",
+        "type": "bool",
+        "default": false
+      },
+      "approved_comment": {
+        "description": "新评论已审核 /webhook/approved-comment",
+        "type": "bool",
+        "default": false
+      },
+      "pending_post": {
+        "description": "新帖待审核 /webhook/pending-post",
+        "type": "bool",
+        "default": false
+      },
+      "pending_comment": {
+        "description": "新评论待审核 /webhook/pending-comment",
+        "type": "bool",
+        "default": false
       }
     }
   }
