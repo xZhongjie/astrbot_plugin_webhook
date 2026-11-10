@@ -26,6 +26,7 @@ class WebhookPlugin(Star):
         super().__init__(context)
         self.config = config
         self.runner: web.AppRunner | None = None
+        self.port = 0
 
     async def initialize(self) -> None:
         host = str(self.config.get("host") or "0.0.0.0")
@@ -38,11 +39,17 @@ class WebhookPlugin(Star):
                 logger.info("[webhook] 已启用 /webhook/%s", event)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
-        try:
-            await web.TCPSite(self.runner, host, port).start()
-            logger.info("[webhook] 监听 %s:%s", host, port)
-        except Exception as exc:
-            logger.error("[webhook] 启动失败：%s", exc)
+        for offset in range(30):
+            candidate = port + offset
+            try:
+                await web.TCPSite(self.runner, host, candidate).start()
+                self.port = candidate
+                logger.info("[webhook] 监听 %s:%s", host, candidate)
+                break
+            except OSError:
+                logger.warning("[webhook] 端口 %s 被占用，尝试下一个", candidate)
+        if not self.port:
+            logger.error("[webhook] 30 个端口都被占用，启动失败")
 
     async def terminate(self) -> None:
         if self.runner is not None:
@@ -170,7 +177,7 @@ class WebhookPlugin(Star):
             self.save()
             base = str(
                 self.config.get("public_base_url")
-                or f"http://{self.config.get('host') or '127.0.0.1'}:{self.config.get('port') or 6199}"
+                or f"http://{self.config.get('host') or '127.0.0.1'}:{self.port or 16199}"
             )
             await event.send(
                 MessageChain(
