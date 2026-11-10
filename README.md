@@ -20,7 +20,7 @@
    | --- | --- |
    | name | 我的钩子 |
    | webhook_url | （空，待补） |
-   | token | 自动生成的随机值 |
+   | token | （空，待你服务器生成后回填） |
    | enabled | true |
 
 3. 打开 WebUI → 插件配置 → Webhooks 列表，编辑该条目的 `webhook_url`
