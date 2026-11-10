@@ -14,6 +14,13 @@ from astrbot.api.star import Context, Star
 from astrbot.core.star.filter.command import GreedyStr
 
 
+EVENT_KEYS = {
+    "approved-post": "approved_post",
+    "approved-comment": "approved_comment",
+    "pending-post": "pending_post",
+    "pending-comment": "pending_comment",
+}
+
 class WebhookPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
