@@ -1,34 +1,61 @@
 # astrbot_plugin_webhook
 
-在群里用聊天命令创建 Webhook 记录，自动在插件配置项里生成待补信息（token 已生成，地址待补）。
+接收评论/文章系统的 Webhook，转发到绑定的群。
 
-## 指令
+## 服务端怎么填
+
+服务端的「Koishi 地址」填**基地址**：
 
 ```
-/webhook add [名称]       生成一条待补记录，token 自动生成
-/webhook list             查看所有记录（已补 / 待补）
-/webhook fill 名称 地址    直接补全 webhook 地址
-/webhook del 名称          删除记录
+http://AstrBot所在服务器IP:6199
 ```
 
-## 流程
+服务端会自动拼接：
 
-1. 群里发 `/webhook add 我的钩子`
-2. 插件在配置项 `webhooks` 里新增一条：
+```
+/webhook/approved-post
+/webhook/approved-comment
+/webhook/pending-post
+/webhook/pending-comment
+```
 
-   | 字段 | 值 |
-   | --- | --- |
-   | name | 我的钩子 |
-   | webhook_url | （空，待补） |
-   | token | （空，待你服务器生成后回填） |
-   | enabled | true |
+不需要填路径。
 
-3. 打开 WebUI → 插件配置 → Webhooks 列表，编辑该条目的 `webhook_url`
-4. 或直接聊天补：`/webhook fill 我的钩子 https://example.com/webhook/xxx`
+## 使用步骤
+
+1. 服务端页面创建令牌，复制 token
+2. 在要接收通知的群里发：
+   ```
+   /webhook add 评论通知
+   ```
+3. 填入 token：
+   ```
+   /webhook set 评论通知 服务端生成的token
+   ```
+4. 服务端「Koishi 地址」填 `http://IP:6199`
+5. 服务端配置 webhook 事件
+
+## 请求鉴权
+
+兼容三种：
+
+- `Authorization: Bearer <token>`
+- `X-Webhook-Token: <token>`
+- `?token=<token>`
+
+请求体支持 JSON / 表单，会提取 `title`、`content`、`url`、`author` 等字段。
 
 ## 配置
 
-| 键 | 说明 |
-| --- | --- |
-| `public_base_url` | 生成提示地址用，可留空 |
-| `webhooks` | 记录列表，由命令自动维护 |
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `host` | `0.0.0.0` | 监听地址 |
+| `port` | `6199` | 监听端口 |
+| `public_base_url` | 空 | 对外展示地址 |
+| `webhooks` | [] | 记录列表 |
+
+## 注意
+
+- 端口要在防火墙/安全组放行
+- Docker 部署注意端口映射
+- token 泄露后 `/webhook del` 删除
