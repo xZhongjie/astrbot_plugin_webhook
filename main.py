@@ -1,14 +1,11 @@
-"""Webhook 配置插件。
-
-在群里发送 /webhook add 即可在插件配置项的 webhooks 列表里新增一条记录：
-  * 自动生成 token
-  * webhook_url 留空，作为“待补信息”
-之后在 WebUI 配置里补地址，或用 /webhook fill 直接补。
-"""
+"""Webhook 接收插件：服务端填 AstrBot 地址，按 /webhook/<event> 推送到绑定会话。"""
 
 from __future__ import annotations
 
+import json
 from typing import Any
+
+from aiohttp import web
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
@@ -17,24 +14,41 @@ from astrbot.api.star import Context, Star
 from astrbot.core.star.filter.command import GreedyStr
 
 
-class WebhookConfigPlugin(Star):
+class WebhookPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
         self.config = config
+        self.runner: web.AppRunner | None = None
 
-    # -- 配置项读写 ---------------------------------------------------------
+    async def initialize(self) -> None:
+        host = str(self.config.get("host") or "0.0.0.0")
+        port = int(self.config.get("port") or 6199)
+        app = web.Application()
+        app.router.add_post("/webhook/{event}", self.handle)
+        app.router.add_get("/webhook/{event}", self.handle)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        try:
+            await web.TCPSite(self.runner, host, port).start()
+            logger.info("[webhook] 监听 %s:%s", host, port)
+        except Exception as exc:
+            logger.error("[webhook] 启动失败：%s", exc)
+
+    async def terminate(self) -> None:
+        if self.runner is not None:
+            await self.runner.cleanup()
+
+    # -- 配置 ---------------------------------------------------------------
     def hooks(self) -> list[dict]:
         raw = self.config.get("webhooks")
-        if not isinstance(raw, list):
-            raw = []
-        return [item for item in raw if isinstance(item, dict)]
+        return [x for x in raw if isinstance(x, dict)] if isinstance(raw, list) else []
 
     def save(self) -> None:
         try:
             self.config["webhooks"] = self.hooks()
             self.config.save_config()
         except Exception as exc:
-            logger.warning("[webhook] 保存配置失败：%s", exc)
+            logger.warning("[webhook] 保存失败：%s", exc)
 
     def find(self, name: str) -> dict | None:
         for item in self.hooks():
@@ -42,108 +56,161 @@ class WebhookConfigPlugin(Star):
                 return item
         return None
 
-    def base_url(self) -> str:
-        base = str(self.config.get("public_base_url") or "").strip().rstrip("/")
-        if base:
-            return base
-        return "https://请填写你的域名"
+    def find_by_token(self, token: str) -> dict | None:
+        if not token:
+            return None
+        for item in self.hooks():
+            if item.get("enabled", True) and str(item.get("token") or "") == token:
+                return item
+        return None
+
+    # -- HTTP ---------------------------------------------------------------
+    @staticmethod
+    def _token(request: web.Request) -> str:
+        auth = request.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip()
+        return (
+            request.headers.get("X-Webhook-Token")
+            or request.query.get("token")
+            or ""
+        ).strip()
+
+    @staticmethod
+    def _format(event: str, data: Any) -> str:
+        if not isinstance(data, dict):
+            data = {"content": str(data)}
+        post = data.get("post") if isinstance(data.get("post"), dict) else {}
+        comment = data.get("comment") if isinstance(data.get("comment"), dict) else {}
+
+        def pick(*values: Any) -> str:
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return ""
+
+        title = pick(data.get("title"), post.get("title"), data.get("subject"))
+        content = pick(data.get("content"), comment.get("content"), data.get("text"))
+        url = pick(data.get("url"), data.get("link"), post.get("url"))
+        author = pick(data.get("author"), comment.get("author"), post.get("author"))
+        if len(content) > 300:
+            content = content[:300] + "…"
+        lines = [f"【{event}】"]
+        if title:
+            lines.append(title)
+        if author:
+            lines.append(f"作者：{author}")
+        if content:
+            lines.append(content)
+        if url:
+            lines.append(url)
+        if len(lines) == 1:
+            lines.append(json.dumps(data, ensure_ascii=False)[:300])
+        return "\n".join(lines)
+
+    async def handle(self, request: web.Request) -> web.Response:
+        event = request.match_info.get("event", "")
+        item = self.find_by_token(self._token(request))
+        if item is None:
+            logger.warning("[webhook] token 无效（event=%s）", event)
+            return web.json_response({"ok": False, "error": "invalid token"}, status=401)
+        data: Any = {}
+        if request.can_read_body:
+            try:
+                if request.content_type == "application/json":
+                    data = await request.json()
+                else:
+                    data = dict(await request.post())
+            except Exception:
+                data = {}
+        session = str(item.get("session") or "").strip()
+        if not session:
+            return web.json_response({"ok": False, "error": "no session"}, status=400)
+        try:
+            await self.context.send_message(
+                session, MessageChain([Plain(self._format(event, data))])
+            )
+        except Exception as exc:
+            logger.warning("[webhook] 转发失败：%s", exc)
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        logger.info("[webhook] %s -> %s", event, session[:30])
+        return web.json_response({"ok": True})
 
     # -- 指令 ---------------------------------------------------------------
     @filter.command("webhook")
     async def webhook(self, event: AstrMessageEvent, args: GreedyStr):
         parts = str(args or "").strip().split()
         sub = parts[0].lower() if parts else "add"
-
         if sub == "add":
             name = parts[1] if len(parts) > 1 else f"hook-{len(self.hooks()) + 1}"
             if self.find(name):
-                await event.send(MessageChain([Plain(f"已存在同名记录：{name}")]))
+                await event.send(MessageChain([Plain(f"已存在：{name}")]))
                 return
-            item = {
-                "__template_key": "hook",
-                "name": name,
-                "webhook_url": "",
-                "token": "",
-                "enabled": True,
-            }
             hooks = self.hooks()
-            hooks.append(item)
+            hooks.append(
+                {
+                    "__template_key": "hook",
+                    "name": name,
+                    "session": event.unified_msg_origin,
+                    "token": "",
+                    "enabled": True,
+                }
+            )
             self.config["webhooks"] = hooks
             self.save()
+            base = str(
+                self.config.get("public_base_url")
+                or f"http://{self.config.get('host') or '127.0.0.1'}:{self.config.get('port') or 6199}"
+            )
             await event.send(
                 MessageChain(
                     [
                         Plain(
-                            f"已创建待补记录：{name}\n"
-                            "webhook_url 和 token 均为空，等待补充。\n"
-                            "补法一：WebUI 插件配置 → webhooks → 编辑该条目\n"
-                            f"补法二：/webhook fill {name} <地址> <你的token>"
+                            f"已创建：{name}\n绑定会话：{event.unified_msg_origin}\n"
+                            "token 待补：/webhook set 名称 <token>\n"
+                            f"服务端「Koishi 地址」填：{base}"
                         )
                     ]
                 )
             )
             return
-
+        if sub == "set":
+            if len(parts) < 3:
+                await event.send(MessageChain([Plain("用法：/webhook set <名称> <token>")]))
+                return
+            item = self.find(parts[1])
+            if item is None:
+                await event.send(MessageChain([Plain(f"没有找到：{parts[1]}")]))
+                return
+            item["token"] = parts[2]
+            self.save()
+            await event.send(MessageChain([Plain(f"已写入 {parts[1]} 的 token")]))
+            return
         if sub == "list":
             hooks = self.hooks()
             if not hooks:
-                await event.send(MessageChain([Plain("暂无 Webhook 记录，发送 /webhook add 创建")]))
+                await event.send(MessageChain([Plain("暂无记录")]))
                 return
             lines = ["Webhook 记录："]
             for item in hooks:
-                name = item.get("name") or "?"
-                url = str(item.get("webhook_url") or "").strip()
                 token = str(item.get("token") or "")
-                has_token = bool(str(item.get("token") or ""))
-                state = "已补" if (url and has_token) else "待补"
                 lines.append(
-                    f"- {name} [{state}] token={'已填' if token else '（空）'} url={url or '（空）'}"
+                    f"- {item.get('name')} token={'已填' if token else '待补'} 会话={item.get('session')}"
                 )
             await event.send(MessageChain([Plain("\n".join(lines))]))
             return
-
-        if sub == "fill":
-            if len(parts) < 3:
-                await event.send(MessageChain([Plain("用法：/webhook fill <名称> <地址> [token]")]))
-                return
-            name, url = parts[1], parts[2]
-            token = parts[3] if len(parts) > 3 else ""
-            item = self.find(name)
-            if item is None:
-                await event.send(MessageChain([Plain(f"没有找到记录：{name}")]))
-                return
-            item["webhook_url"] = url
-            if token:
-                item["token"] = token
-            self.save()
-            await event.send(MessageChain([Plain(f"已补全 {name} 的 webhook 地址{'和 token' if token else ''}")]))
-            return
-
         if sub == "del":
             if len(parts) < 2:
                 await event.send(MessageChain([Plain("用法：/webhook del <名称>")]))
                 return
-            name = parts[1]
-            item = self.find(name)
+            item = self.find(parts[1])
             if item is None:
-                await event.send(MessageChain([Plain(f"没有找到记录：{name}")]))
+                await event.send(MessageChain([Plain(f"没有找到：{parts[1]}")]))
                 return
-            hooks = [h for h in self.hooks() if h is not item]
-            self.config["webhooks"] = hooks
+            self.config["webhooks"] = [h for h in self.hooks() if h is not item]
             self.save()
-            await event.send(MessageChain([Plain(f"已删除：{name}")]))
+            await event.send(MessageChain([Plain(f"已删除：{parts[1]}")]))
             return
-
         await event.send(
-            MessageChain(
-                [
-                    Plain(
-                        "用法：\n"
-                        "/webhook add [名称]   生成待补记录（token 自动生成）\n"
-                        "/webhook list         查看记录\n"
-                        "/webhook fill 名称 地址  补 webhook 地址\n"
-                        "/webhook del 名称     删除"
-                    )
-                ]
-            )
+            MessageChain([Plain("用法：/webhook add|set|list|del")])
         )
