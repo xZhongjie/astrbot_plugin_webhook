@@ -1,0 +1,42 @@
+{
+  "public_base_url": {
+    "description": "对外访问地址",
+    "type": "string",
+    "default": "",
+    "hint": "用于生成提示里的 webhook 地址，例如 https://bot.example.com；留空则显示占位域名。"
+  },
+  "webhooks": {
+    "description": "Webhook 记录",
+    "type": "template_list",
+    "default": [],
+    "hint": "由 /webhook add 自动生成。webhook_url 与 token 由你自己的服务器生成后回填。",
+    "templates": {
+      "hook": {
+        "name": "Webhook",
+        "display_item": "name",
+        "items": {
+          "name": {
+            "description": "名称",
+            "type": "string",
+            "default": ""
+          },
+          "webhook_url": {
+            "description": "Webhook 地址（待补）",
+            "type": "string",
+            "default": ""
+          },
+          "token": {
+            "description": "Token（由你的服务器生成）",
+            "type": "string",
+            "default": ""
+          },
+          "enabled": {
+            "description": "启用",
+            "type": "bool",
+            "default": true
+          }
+        }
+      }
+    }
+  }
+}
