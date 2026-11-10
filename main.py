@@ -24,8 +24,11 @@ class WebhookPlugin(Star):
         host = str(self.config.get("host") or "0.0.0.0")
         port = int(self.config.get("port") or 6199)
         app = web.Application()
-        app.router.add_post("/webhook/{event}", self.handle)
-        app.router.add_get("/webhook/{event}", self.handle)
+        configured = self.config.get("events") or {}
+        for event, key in EVENT_KEYS.items():
+            if isinstance(configured, dict) and configured.get(key, False):
+                app.router.add_post(f"/webhook/{event}", self.handle)
+                logger.info("[webhook] 已启用 /webhook/%s", event)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         try:
