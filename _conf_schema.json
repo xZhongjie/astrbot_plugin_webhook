@@ -1,40 +1,31 @@
 {
+  "host": {"description": "监听地址", "type": "string", "default": "0.0.0.0"},
+  "port": {
+    "description": "监听端口",
+    "type": "int",
+    "default": 6199,
+    "hint": "服务端「Koishi 地址」填 http://你的IP:这个端口"
+  },
   "public_base_url": {
-    "description": "对外访问地址",
+    "description": "对外展示地址",
     "type": "string",
     "default": "",
-    "hint": "用于生成提示里的 webhook 地址，例如 https://bot.example.com；留空则显示占位域名。"
+    "hint": "可选，例如 http://1.2.3.4:6199"
   },
   "webhooks": {
     "description": "Webhook 记录",
     "type": "template_list",
     "default": [],
-    "hint": "由 /webhook add 自动生成。webhook_url 与 token 由你自己的服务器生成后回填。",
+    "hint": "由 /webhook add 生成，token 由服务端生成后用 /webhook set 填入",
     "templates": {
       "hook": {
         "name": "Webhook",
         "display_item": "name",
         "items": {
-          "name": {
-            "description": "名称",
-            "type": "string",
-            "default": ""
-          },
-          "webhook_url": {
-            "description": "Webhook 地址（待补）",
-            "type": "string",
-            "default": ""
-          },
-          "token": {
-            "description": "Token（由你的服务器生成）",
-            "type": "string",
-            "default": ""
-          },
-          "enabled": {
-            "description": "启用",
-            "type": "bool",
-            "default": true
-          }
+          "name": {"description": "名称", "type": "string", "default": ""},
+          "session": {"description": "绑定的会话", "type": "string", "default": ""},
+          "token": {"description": "服务端生成的令牌", "type": "string", "default": ""},
+          "enabled": {"description": "启用", "type": "bool", "default": true}
         }
       }
     }
